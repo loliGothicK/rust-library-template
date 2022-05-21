@@ -89,11 +89,11 @@ jobs:
           $LINK = "https://github.com/mozilla/sccache/releases/download"
           $SCCACHE_FILE = "sccache-v${SCCACHE_VERSION}-x86_64-${{ matrix.target }}"
           mkdir -p "${HOME}/.local/bin"
-          Set-Location ($pwd).path
           echo "${LINK}/v${SCCACHE_VERSION}/${SCCACHE_FILE}.tar.gz"
-          Invoke-WebRequest -Uri "${LINK}/v${SCCACHE_VERSION}/${SCCACHE_FILE}.tar.gz" -OutFile $SCCACHE_FILE
-          ls
-          tar xz $SCCACHE_FILE
+          Invoke-WebRequest -Uri "${LINK}/v${SCCACHE_VERSION}/${SCCACHE_FILE}.tar.gz" -OutFile "${SCCACHE_FILE}.tar.gz"
+          echo "${SCCACHE_FILE}.tar.gz"
+          Set-Location ($pwd).path
+          tar xz "${SCCACHE_FILE}.tar.gz"
           mv -Force $SCCACHE_FILE/sccache $HOME/.local/bin/sccache
           echo $HOME/.local/bin >> $GITHUB_PATH
 
