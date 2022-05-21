@@ -1,0 +1,31 @@
+[config]
+skip_core_tasks = true
+
+[env]
+__CARGO_FIX_YOLO=1
+REPOSITORY_ROOT = { script = ["git rev-parse --show-superproject-working-tree --show-toplevel"] }
+
+[tasks.lint]
+command = "cargo"
+args = [ "clippy", "--", "-D", "warnings" ]
+
+[tasks.test]
+command = "cargo"
+args = [ "test" ]
+
+[tasks.fix]
+command = "cargo"
+args = [ "clippy", "--fix", "--allow-dirty", "--allow-staged" ]
+
+[tasks.format]
+toolchain = "nightly"
+command = "cargo"
+args = [ "fmt", "--", "--config-path=${REPOSITORY_ROOT}/.cargo-husky/hooks/rustfmt.toml", "--emit=files" ]
+
+[tasks.pretty]
+dependencies = [
+    "fix", # [tasks.fix] can break the test code.
+    "test",
+    "lint", # [tasks.fix] may fix the warning.
+    "format",
+]
