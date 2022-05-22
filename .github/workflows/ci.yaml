@@ -45,14 +45,17 @@ jobs:
             target: unknown-linux-musl
             sccache:
               path: /home/runner/.cache/sccache
+            exe: ""
           - os: macos-latest
             target: apple-darwin
             sccache:
               path: /Users/runner/Library/Caches/Mozilla.sccache
+            exe: ""
           - os: windows-latest
             target: pc-windows-msvc
             sccache:
               path: /Users/runner/%LOCALAPPDATA%\Mozilla\sccache
+            exe: ".exe"
 
     env:
       RUST_BACKTRACE: full
@@ -72,28 +75,6 @@ jobs:
           toolchain: ${{ matrix.rust }}
           override: true
 
-      - name: Install sccache
-        uses: actions-rs/cargo@v1
-        with:
-          command: install
-          args: --version=${{ env.SCCACHE_VERSION }} --force sccache
-
-      - name: Start sccache server
-        run: sccache --start-server
-
-      - name: Run test
-        uses: actions-rs/cargo@v1
-        env:
-          RUSTC_WRAPPER: sccache
-        with:
-          command: test
-          args: --release --all-features
-
-      - name: Print sccache stats
-        run: sccache --show-stats
-      - name: Stop sccache server
-        run: sccache --stop-server || true
-
       - name: Cache cargo registry
         uses: actions/cache@v3
         continue-on-error: false
@@ -105,16 +86,38 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
               ${{ runner.os }}-cargo-
+
       - name: Save sccache
+        id: restore-sccache
         uses: actions/cache@v3
-        env:
-          if: matrix.os == windows-latest
-          EXE: .exe
         continue-on-error: false
         with:
           path: |
             ${{ matrix.sccache.path }}
-            ~/.cargo/bin/sccache${{ env.EXE }}
+            ~/.cargo/bin/sccache${{ matrix.exe }}
           key: ${{ runner.os }}-sccache-${{ env.SCCACHE_VERSION }}-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
               ${{ runner.os }}-sccache-${{ env.SCCACHE_VERSION }}-
+
+      - if: ${{ steps.restore-sccache.outputs.cache-hit == false }}
+        name: Install sccache
+        uses: actions-rs/cargo@v1
+        with:
+          command: install
+          args: --version=${{ env.SCCACHE_VERSION }} --force sccache
+
+      - name: Start sccache server
+        run: sccache --start-server
+
+      - name: Run tests
+        uses: actions-rs/cargo@v1
+        env:
+          RUSTC_WRAPPER: sccache
+        with:
+          command: test
+          args: --release --all-features
+
+      - name: Print sccache stats
+        run: sccache --show-stats
+      - name: Stop sccache server
+        run: sccache --stop-server || true
