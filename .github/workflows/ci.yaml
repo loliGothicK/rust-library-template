@@ -4,35 +4,50 @@ on: [ push, pull_request ]
 
 jobs:
   rustfmt:
-    name: rustfmt
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      checks: write
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
         with:
-          toolchain: nightly
           components: rustfmt
-          override: true
-      - name: rustfmt check
-        run: cargo fmt --all -- --check --config-path=./.cargo-husky/hooks/rustfmt.toml
-
-  clippy:
-    name: clippy
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v1
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          components: clippy
-          override: true
-      - uses: actions-rs/clippy-check@v1
+      - uses: LoliGothick/rustfmt-check@master
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          args: --jobs=20 -- --deny warnings
+          flags: --all
+          args: --config-path=./.cargo-husky/hooks/rustfmt.toml
+
+  clippy:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: clippy
+      - uses: giraffate/clippy-action@v1
+        with:
+          reporter: 'github-pr-review'
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          clippy_flags: -- -Dwarning
+
+  deny:
+    name: Run cargo-deny
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          rust-version: stable
+          log-level: warn
+          command: check
+          arguments: --all-features
 
   test:
-    needs: [ rustfmt, clippy ]
+    needs: [ rustfmt, clippy, deny ]
     name: "Test: { target: ${{ matrix.os }}, channel: ${{ matrix.rust }} }"
     runs-on: ${{matrix.os}}
     strategy:
@@ -62,21 +77,17 @@ jobs:
       RUSTV: ${{ matrix.rust }}
       SCCACHE_CACHE_SIZE: 2G
       SCCACHE_DIR: ${{ matrix.sccache-path }}
-      SCCACHE_VERSION: 0.3.0
       # SCCACHE_RECACHE: 1 # Uncomment this to clear cache, then comment it back out
+      RUSTC_WRAPPER: sccache
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Setup Rust ${{ matrix.rust }}
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: ${{ matrix.rust }}
-          override: true
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Cache cargo registry
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         continue-on-error: false
         with:
           path: |
@@ -85,37 +96,31 @@ jobs:
             ~/.cargo/registry/index/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-              ${{ runner.os }}-cargo-
+            ${{ runner.os }}-cargo-
 
       - name: Save sccache
         id: restore-sccache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         continue-on-error: false
         with:
           path: |
             ${{ matrix.sccache.path }}
             ~/.cargo/bin/sccache${{ matrix.exe }}
-          key: ${{ runner.os }}-sccache-${{ env.SCCACHE_VERSION }}-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-sccache-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-              ${{ runner.os }}-sccache-${{ env.SCCACHE_VERSION }}-
+            ${{ runner.os }}-sccache
 
       - if: ${{ steps.restore-sccache.outputs.cache-hit == false }}
-        name: Install sccache
-        uses: actions-rs/cargo@v1
+        name: install sccache
+        uses: taiki-e/install-action@v2
         with:
-          command: install
-          args: --version=${{ env.SCCACHE_VERSION }} --force sccache
+          tool: sccache
 
       - name: Start sccache server
         run: sccache --start-server
 
       - name: Run tests
-        uses: actions-rs/cargo@v1
-        env:
-          RUSTC_WRAPPER: sccache
-        with:
-          command: test
-          args: --release --all-features
+        run: cargo test --all-features
 
       - name: Print sccache stats
         run: sccache --show-stats
